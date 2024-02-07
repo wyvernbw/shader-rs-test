@@ -1,0 +1,39 @@
+[package]
+name = "shader-rs-test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+members = ["shader", "."]
+
+[workspace.dependencies]
+winit = "0.28"
+log = "0.4"
+wgpu = "0.18"
+tracing-log = "0.2.0"
+anyhow = "1.0.79"
+tokio = "1.36.0"
+
+[dependencies]
+shader = { path = "shader" }
+winit = { workspace = true }
+log = { workspace = true }
+wgpu = { workspace = true }
+tracing-log = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+
+[build-dependencies]
+spirv-builder = "0.9"
+
+
+# Compile build-dependencies in release mode with
+# the same settings as regular dependencies.
+[profile.release.build-override]
+opt-level = 3
+codegen-units = 16
+[profile.dev.build-override]
+opt-level = 3
