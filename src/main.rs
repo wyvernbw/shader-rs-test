@@ -1,61 +1,157 @@
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_log::LogTracer::init()?;
-    run().await?;
-    Ok(())
+use std::{
+    ffi::{CStr, CString},
+    path::PathBuf,
+    rc::Rc,
+};
+
+use anyhow::anyhow;
+use glutin::{
+    config::{Api, AsRawConfig, Config, ConfigTemplateBuilder},
+    context::{ContextApi, ContextAttributesBuilder, GlProfile, Version},
+    display::{AsRawDisplay, GetGlDisplay},
+    prelude::*,
+};
+
+use clap::Parser;
+use glutin_winit::{ApiPreference, DisplayBuilder, GlWindow};
+use posh::{
+    bytemuck::Zeroable,
+    gl::{self, Program, VertexSpec},
+    sl::{self, *},
+    Gl, Sl,
+};
+use shader::{fragment_shader, vertex_shader, Uniforms};
+use winit::{
+    dpi::PhysicalSize,
+    event::{Event, StartCause},
+    event_loop::EventLoop,
+    raw_window_handle::HasWindowHandle,
+    window::{Window, WindowBuilder},
+};
+
+pub fn main() -> anyhow::Result<()> {
+    smol::block_on(run())
+}
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(short, long)]
+    input: PathBuf,
+    #[arg(short, long, default_value = "./output.png")]
+    output: PathBuf,
 }
 
 pub async fn run() -> anyhow::Result<()> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
+    let (window, config, event_loop) = setup().await?;
+    let display = config.display();
+
+    let init = || {
+        let gl = unsafe {
+            glow::Context::from_loader_function(|s| {
+                let s = CString::new(s).unwrap();
+                display.get_proc_address(&s) as *const _
+            })
+        };
+        let gl = gl::Context::new(gl)?;
+        let program: gl::Program<Uniforms<Sl>, sl::Vec2> =
+            gl.create_program(vertex_shader, fragment_shader)?;
+        let uniforms: gl::UniformBuffer<Uniforms<Gl>> = gl.create_uniform_buffer(
+            Uniforms {
+                fragment: gl::Vec4::zeroed(),
+            },
+            gl::BufferUsage::DynamicDraw,
+        )?;
+        let vertices: gl::VertexBuffer<gl::Vec2> = gl.create_vertex_buffer(
+            &[
+                [0.0f32, 1.0].into(),
+                [-0.5, -0.5].into(),
+                [0.5, -0.5].into(),
+            ],
+            gl::BufferUsage::StreamDraw,
+        )?;
+        program
+            .with_uniforms(uniforms.as_binding())
+            .with_settings(gl::DrawSettings::default().with_clear_color([0.1, 0.2, 0.3, 1.0]))
+            .draw(vertices.as_vertex_spec(gl::PrimitiveMode::Triangles))?;
+
+        anyhow::Result::<()>::Ok(())
+    };
+    event_loop.run(move |event, target| match event {
+        Event::NewEvents(StartCause::Init) => {
+            init().expect("Failed to initialize");
+        }
+        _ => {}
     });
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-    let (device, queue) = adapter
-        .request_device(&Default::default(), None)
-        .await
-        .unwrap();
-    let texture_size = 256u32;
-
-    let texture_desc = wgpu::TextureDescriptor {
-        size: wgpu::Extent3d {
-            width: texture_size,
-            height: texture_size,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
-        label: None,
-        view_formats: &[wgpu::TextureFormat::Rgba32Float],
-    };
-    let texture = device.create_texture(&texture_desc);
-    let texture_view = texture.create_view(&Default::default());
-
-    // we need to store this for later
-    let u32_size = std::mem::size_of::<u32>() as u32;
-
-    let output_buffer_size = (u32_size * texture_size * texture_size) as wgpu::BufferAddress;
-    let output_buffer_desc = wgpu::BufferDescriptor {
-        size: output_buffer_size,
-        usage: wgpu::BufferUsages::COPY_DST
-        // this tells wpgu that we want to read this buffer from the cpu
-        | wgpu::BufferUsages::MAP_READ,
-        label: None,
-        mapped_at_creation: false,
-    };
-    let output_buffer = device.create_buffer(&output_buffer_desc);
-
-    let shader = include_bytes!(env!("shader.spv"));
-
     Ok(())
+}
+
+pub type Setup = (Window, Config, EventLoop<()>);
+pub async fn setup() -> anyhow::Result<Setup> {
+    let _ = tracing_subscriber::fmt::try_init().map_err(|_| {
+        eprintln!("Failed to initialize logger");
+        tracing::error!("Logger already initialized, ignoring this error.");
+    });
+    let event_loop = EventLoop::new()?;
+    let window_builder = WindowBuilder::new()
+        .with_title("Posh")
+        .with_transparent(true)
+        .with_inner_size(PhysicalSize::new(800, 600));
+    let template = ConfigTemplateBuilder::new()
+        .with_alpha_size(8)
+        .with_api(Api::OPENGL);
+
+    let display = DisplayBuilder::new().with_window_builder(Some(window_builder));
+
+    let (Some(window), config) = display
+        .build(&event_loop, template, |configs| {
+            let configs = configs.collect::<Vec<_>>();
+            tracing::info!("Configs: {:#?}", configs);
+            configs
+                .into_iter()
+                .inspect(|config| {
+                    tracing::info!(?config, api = ?config.api(), "Config: ");
+                })
+                //.filter(|config| config.api() == Api::GLES3)
+                .reduce(|accum, config| {
+                    let transparency_check = config.supports_transparency().unwrap_or(false)
+                        & !accum.supports_transparency().unwrap_or(false);
+
+                    if transparency_check || config.num_samples() > accum.num_samples() {
+                        config
+                    } else {
+                        accum
+                    }
+                })
+                .expect("No suitable config found")
+        })
+        .map_err(|_| anyhow!("Failed to initialize window"))?
+    else {
+        return Err(anyhow!("Failed to create window"));
+    };
+
+    let display = config.display();
+
+    let raw_window_handle = window.window_handle()?.as_raw();
+    let raw_window_handle = winit::raw_window_handle::RawWindowHandle::from(raw_window_handle);
+
+    let context_attributes = ContextAttributesBuilder::new()
+        .with_context_api(ContextApi::OpenGl(Some(Version::new(4, 1))))
+        .with_profile(GlProfile::Core)
+        .build(Some(raw_window_handle));
+
+    let ctx = unsafe { display.create_context(&config, &context_attributes)? };
+    let surface_attributes = window.build_surface_attributes(Default::default());
+
+    let gl_surface = unsafe {
+        config
+            .display()
+            .create_window_surface(&config, &surface_attributes)?
+    };
+
+    ctx.make_current(&gl_surface)?;
+    let version = display.version_string();
+    tracing::info!("OpenGL version: {:?}", version);
+    let sh_version = display.supported_features();
+    tracing::info!("Display features {:?}", sh_version);
+    Ok((window, config, event_loop))
 }

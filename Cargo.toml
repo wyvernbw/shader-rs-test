@@ -5,29 +5,27 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace]
-members = ["shader", "."]
+[lib]
+name = "shader"
+path = "src/lib.rs"
 
-[workspace.dependencies]
-winit = "0.28"
-log = "0.4"
-wgpu = "0.18"
-tracing-log = "0.2.0"
-anyhow = "1.0.79"
-tokio = "1.36.0"
+[[bin]]
+name = "run_shader"
+path = "src/main.rs"
+
 
 [dependencies]
-shader = { path = "shader" }
-winit = { workspace = true }
-log = { workspace = true }
-wgpu = { workspace = true }
-tracing-log = { workspace = true }
-anyhow = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
-
-
-[build-dependencies]
-spirv-builder = "0.9"
+anyhow = "1.0.79"
+smol = "2.0.0"
+clap = { version = "4.4.18", features = ["derive"] }
+image = "0.24.8"
+posh = { git = "https://github.com/leod/posh.git" }
+glow = "0.13.1"
+glutin = { git = "https://github.com/rust-windowing/glutin.git" }
+glutin-winit = { git = "https://github.com/rust-windowing/glutin.git" }
+winit = "0.29.10"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
 
 
 # Compile build-dependencies in release mode with
