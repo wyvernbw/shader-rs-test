@@ -17,6 +17,7 @@ use glutin::{
 
 use clap::Parser;
 use glutin_winit::{DisplayBuilder, GlWindow};
+use posh::gl::{Sampler2dSettings, UniformBuffer};
 use posh::{
     bytemuck::Zeroable,
     gl::{self},
@@ -24,7 +25,7 @@ use posh::{
     Gl, Sl,
 };
 use raw_window_handle::HasRawWindowHandle;
-use shader::{fragment_shader, vertex_shader, Uniforms};
+use shader::{fragment_shader, vertex_shader, App, Uniforms};
 use tracing::Level;
 use winit::event::WindowEvent;
 use winit::{
@@ -47,6 +48,7 @@ struct Args {
 }
 
 pub async fn run() -> anyhow::Result<()> {
+    let args = Args::parse();
     let State {
         window,
         config,
@@ -62,6 +64,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
     };
     let display = config.display();
+    let window_size = window.inner_size();
 
     let init = || {
         tracing::info!("Loading OpenGL symbols...");
@@ -77,23 +80,59 @@ pub async fn run() -> anyhow::Result<()> {
         let gl = gl::Context::new(gl)?;
         let program: gl::Program<Uniforms<Sl>, sl::Vec2> =
             gl.create_program(vertex_shader, fragment_shader)?;
-        let uniforms: gl::UniformBuffer<Uniforms<Gl>> = gl.create_uniform_buffer(
-            Uniforms {
-                time: 42.0,
-                size: [1.0, 1.0].into(),
-            },
-            gl::BufferUsage::StreamDraw,
-        )?;
+
+        let input_image = image::open(&args.input)?;
+        let input_image = input_image
+            .as_rgba8()
+            .map_or_else(|| Err(anyhow!("Not RGBA")), Ok)?;
+        let input_image =
+            gl::ColorImage::rgba_u8_slice([input_image.width(), input_image.height()], input_image);
+
+        let texture = gl.create_color_texture_2d(input_image)?;
         let vertices: gl::VertexBuffer<gl::Vec2> =
             gl.create_vertex_buffer(&full_screen_quad(), gl::BufferUsage::StaticDraw)?;
+        let app: gl::UniformBuffer<App<Gl>> = gl.create_uniform_buffer(
+            App {
+                window_size: gl::Vec2::from([window_size.width as f32, window_size.height as f32]),
+            },
+            gl::BufferUsage::StaticRead,
+        )?;
+        let uniforms = Uniforms {
+            texture: texture.as_color_sampler(Sampler2dSettings {
+                wrap_s: gl::SamplerWrap::ClampToEdge,
+                wrap_t: gl::SamplerWrap::ClampToEdge,
+                ..Default::default()
+            }),
+            app: app.as_binding(),
+        };
 
-        anyhow::Result::<_>::Ok(move || -> anyhow::Result<()> {
-            program
-                .with_uniforms(uniforms.as_binding())
-                .with_settings(gl::DrawSettings::default().with_clear_color([1.0, 1.0, 1.0, 1.0]))
-                .draw(vertices.as_vertex_spec(gl::PrimitiveMode::Triangles))?;
-            Ok(())
-        })
+        anyhow::Result::<_>::Ok(
+            move |window_size: PhysicalSize<u32>| -> anyhow::Result<()> {
+                let uniforms = uniforms.clone();
+
+                tracing::debug!(?window_size);
+                let app: gl::UniformBuffer<App<Gl>> = gl.create_uniform_buffer(
+                    App {
+                        window_size: gl::Vec2::from([
+                            window_size.width as f32,
+                            window_size.height as f32,
+                        ]),
+                    },
+                    gl::BufferUsage::StaticRead,
+                )?;
+                let uniforms = Uniforms {
+                    app: app.as_binding(),
+                    ..uniforms
+                };
+                program
+                    .with_uniforms(uniforms)
+                    .with_settings(
+                        gl::DrawSettings::default().with_clear_color([1.0, 1.0, 1.0, 1.0]),
+                    )
+                    .draw(vertices.as_vertex_spec(gl::PrimitiveMode::Triangles))?;
+                Ok(())
+            },
+        )
     };
     let mut redraw = None;
     event_loop.run(move |event, target| match event {
@@ -116,7 +155,7 @@ pub async fn run() -> anyhow::Result<()> {
         Event::Resumed => {}
         _ => {
             if let Some(ref redraw) = redraw {
-                if let Err(err) = redraw() {
+                if let Err(err) = redraw(window.inner_size()) {
                     tracing::error!("Failed to redraw: {:?}", err);
                 };
             }
