@@ -19,13 +19,14 @@ anyhow = "1.0.79"
 smol = "2.0.0"
 clap = { version = "4.4.18", features = ["derive"] }
 image = "0.24.8"
-posh = { git = "https://github.com/leod/posh.git" }
+posh = { git = "https://github.com/wyvernbw/posh" }
 glow = "0.13.1"
 glutin = { git = "https://github.com/rust-windowing/glutin.git" }
 glutin-winit = { git = "https://github.com/rust-windowing/glutin.git" }
+raw-window-handle = "0.5.2"
 winit = "0.29.10"
-tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
+tracing = "0.1.40"
 
 
 # Compile build-dependencies in release mode with

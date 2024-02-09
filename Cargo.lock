@@ -347,9 +347,9 @@ dependencies = [
 
 [[package]]
 name = "bytemuck"
-version = "1.14.2"
+version = "1.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea31d69bda4949c1c1562c1e6f042a1caefac98cdc8a298260a2ff41c1e2d42b"
+checksum = "a2ef034f05691a48569bd920a96c81b9d91bbad1ab5ac7c4616c1f6ef36cb79f"
 
 [[package]]
 name = "bytemuck_derive"
@@ -561,7 +561,7 @@ name = "crevice"
 version = "0.14.0"
 source = "git+https://github.com/leod/crevice?branch=specify_crate_in_derive#82a461f1e7e80741f33e6495c5a55d7753739a92"
 dependencies = [
- "bytemuck 1.14.2",
+ "bytemuck 1.14.3",
  "crevice-derive",
  "mint",
 ]
@@ -983,7 +983,7 @@ version = "0.24.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "034bbe799d1909622a74d1193aa50147769440040ff36cb2baa947609b0a4e23"
 dependencies = [
- "bytemuck 1.14.2",
+ "bytemuck 1.14.3",
  "byteorder",
  "color_quant",
  "exr",
@@ -1340,7 +1340,7 @@ dependencies = [
 [[package]]
 name = "posh"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/leod/posh.git#e91878b07870e4a8141f35bb60d4cbc4b134b69f"
+source = "git+https://github.com/wyvernbw/posh#fec644d275c1839d4aaf01d5644df3aea5574a6c"
 dependencies = [
  "bytemuck 1.13.1",
  "crevice",
@@ -1357,7 +1357,7 @@ dependencies = [
 [[package]]
 name = "posh-derive"
 version = "0.1.0"
-source = "git+https://github.com/leod/posh.git#e91878b07870e4a8141f35bb60d4cbc4b134b69f"
+source = "git+https://github.com/wyvernbw/posh#fec644d275c1839d4aaf01d5644df3aea5574a6c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1388,7 +1388,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
- "bytemuck 1.14.2",
+ "bytemuck 1.14.3",
 ]
 
 [[package]]
@@ -1549,6 +1549,7 @@ dependencies = [
  "glutin-winit",
  "image",
  "posh",
+ "raw-window-handle 0.5.2",
  "smol",
  "tracing",
  "tracing-subscriber",
@@ -1746,7 +1747,7 @@ checksum = "83d13394d44dae3207b52a326c0c85a8bf87f1541f23b0d143811088497b09ab"
 dependencies = [
  "arrayref",
  "arrayvec",
- "bytemuck 1.14.2",
+ "bytemuck 1.14.3",
  "cfg-if",
  "log",
  "tiny-skia-path",
@@ -1759,7 +1760,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e7fc0c2e86a30b117d0462aa261b72b7a99b7ebd7deb3a14ceda95c5bdc93"
 dependencies = [
  "arrayref",
- "bytemuck 1.14.2",
+ "bytemuck 1.14.3",
  "strict-num",
 ]
 
@@ -2329,7 +2330,7 @@ dependencies = [
  "android-activity",
  "atomic-waker",
  "bitflags 2.4.2",
- "bytemuck 1.14.2",
+ "bytemuck 1.14.3",
  "calloop",
  "cfg_aliases",
  "core-foundation",

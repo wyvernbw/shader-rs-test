@@ -1,31 +1,28 @@
-use std::{
-    ffi::{CStr, CString},
-    path::PathBuf,
-    rc::Rc,
-};
+use std::{ffi::CString, path::PathBuf};
 
 use anyhow::anyhow;
+use glutin::config::GlConfig;
+use glutin::context::{AsRawContext, GlContext, NotCurrentGlContext, Version};
 use glutin::{
-    config::{Api, AsRawConfig, Config, ConfigTemplateBuilder},
-    context::{ContextApi, ContextAttributesBuilder, GlProfile, Version},
-    display::{AsRawDisplay, GetGlDisplay},
-    prelude::*,
+    config::{Api, Config, ConfigTemplateBuilder},
+    context::{ContextApi, ContextAttributesBuilder, GlProfile},
+    display::{GetGlDisplay, GlDisplay},
 };
 
 use clap::Parser;
-use glutin_winit::{ApiPreference, DisplayBuilder, GlWindow};
+use glutin_winit::{DisplayBuilder, GlWindow};
 use posh::{
     bytemuck::Zeroable,
-    gl::{self, Program, VertexSpec},
-    sl::{self, *},
+    gl::{self},
+    sl::{self},
     Gl, Sl,
 };
+use raw_window_handle::HasRawWindowHandle;
 use shader::{fragment_shader, vertex_shader, Uniforms};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, StartCause},
     event_loop::EventLoop,
-    raw_window_handle::HasWindowHandle,
     window::{Window, WindowBuilder},
 };
 
@@ -42,7 +39,13 @@ struct Args {
 }
 
 pub async fn run() -> anyhow::Result<()> {
-    let (window, config, event_loop) = setup().await?;
+    let (window, config, event_loop, window_builder) = match setup().await {
+        Ok(setup) => setup,
+        Err(err) => {
+            tracing::error!("Failed to setup: {:?}", err);
+            return Err(err);
+        }
+    };
     let display = config.display();
 
     let init = || {
@@ -80,12 +83,22 @@ pub async fn run() -> anyhow::Result<()> {
         Event::NewEvents(StartCause::Init) => {
             init().expect("Failed to initialize");
         }
+        Event::Resumed => {
+            let res = glutin_winit::finalize_window(target, window_builder.clone(), &config);
+            if let Err(err) = res {
+                tracing::error!(
+                    event = ?Event::<()>::Resumed,
+                    "Failed to finalize window: {:?}",
+                    err
+                );
+            }
+        }
         _ => {}
-    });
+    })?;
     Ok(())
 }
 
-pub type Setup = (Window, Config, EventLoop<()>);
+pub type Setup = (Window, Config, EventLoop<()>, WindowBuilder);
 pub async fn setup() -> anyhow::Result<Setup> {
     let _ = tracing_subscriber::fmt::try_init().map_err(|_| {
         eprintln!("Failed to initialize logger");
@@ -96,11 +109,9 @@ pub async fn setup() -> anyhow::Result<Setup> {
         .with_title("Posh")
         .with_transparent(true)
         .with_inner_size(PhysicalSize::new(800, 600));
-    let template = ConfigTemplateBuilder::new()
-        .with_alpha_size(8)
-        .with_api(Api::OPENGL);
+    let template = ConfigTemplateBuilder::new().with_api(Api::OPENGL);
 
-    let display = DisplayBuilder::new().with_window_builder(Some(window_builder));
+    let display = DisplayBuilder::new().with_window_builder(Some(window_builder.clone()));
 
     let (Some(window), config) = display
         .build(&event_loop, template, |configs| {
@@ -128,18 +139,18 @@ pub async fn setup() -> anyhow::Result<Setup> {
     else {
         return Err(anyhow!("Failed to create window"));
     };
-
-    let display = config.display();
-
-    let raw_window_handle = window.window_handle()?.as_raw();
-    let raw_window_handle = winit::raw_window_handle::RawWindowHandle::from(raw_window_handle);
+    let raw_window_handle = window.raw_window_handle();
 
     let context_attributes = ContextAttributesBuilder::new()
         .with_context_api(ContextApi::OpenGl(Some(Version::new(4, 1))))
-        .with_profile(GlProfile::Core)
         .build(Some(raw_window_handle));
 
+    let display = config.display();
+    let version = display.version_string();
+    tracing::info!("OpenGL version: {:?}", version);
+
     let ctx = unsafe { display.create_context(&config, &context_attributes)? };
+    tracing::info!("OpenGL context created: {:?}", ctx.context_api());
     let surface_attributes = window.build_surface_attributes(Default::default());
 
     let gl_surface = unsafe {
@@ -149,9 +160,7 @@ pub async fn setup() -> anyhow::Result<Setup> {
     };
 
     ctx.make_current(&gl_surface)?;
-    let version = display.version_string();
-    tracing::info!("OpenGL version: {:?}", version);
-    let sh_version = display.supported_features();
-    tracing::info!("Display features {:?}", sh_version);
-    Ok((window, config, event_loop))
+    let features = display.supported_features();
+    tracing::info!("Display features {:?}", features);
+    Ok((window, config, event_loop, window_builder))
 }
